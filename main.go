@@ -86,13 +86,30 @@ func sendToSocketServer(requestString string) (string, error) {
 		return "", fmt.Errorf("error writing message length: %v", err)
 	}
 
-	// Send the length header and the message body
-	if _, err := (*socketConn).Write(buf.Bytes()); err != nil {
-		panic(err)
-		//return "", fmt.Errorf("error sending message length: %v", err)
-	}
-	if _, err := (*socketConn).Write([]byte(requestString)); err != nil {
-		return "", fmt.Errorf("error sending message body: %v", err)
+	/*
+		// Send the length header and the message body
+		if _, err := (*socketConn).Write(buf.Bytes()); err != nil {
+			panic(err)
+			//return "", fmt.Errorf("error sending message length: %v", err)
+		}
+		if _, err := (*socketConn).Write([]byte(requestString)); err != nil {
+			return "", fmt.Errorf("error sending message body: %v", err)
+		}
+	*/
+	// Send the message to the socket server
+	err := writeToSocket(buf.Bytes(), requestString)
+	if err != nil {
+		// Handle reconnection on write failure
+		fmt.Println("Write failed. Attempting to reconnect...")
+		if err := connectToSocketServer(); err != nil {
+			return "", fmt.Errorf("failed to reconnect to socket server: %v", err)
+		}
+
+		// Retry writing after reconnecting
+		err = writeToSocket(buf.Bytes(), requestString)
+		if err != nil {
+			return "", fmt.Errorf("error sending message after reconnect: %v", err)
+		}
 	}
 
 	// Read the response from the socket server
@@ -120,7 +137,7 @@ func sendToSocketServer(requestString string) (string, error) {
 	*/
 
 	body := make([]byte, bodyLength)
-	_, err := socketReader.Read(body)
+	_, err = socketReader.Read(body)
 	if err != nil {
 		//fmt.Println("Error reading body:", err)
 		return "", fmt.Errorf("error reading response body: %v", err)
@@ -130,4 +147,14 @@ func sendToSocketServer(requestString string) (string, error) {
 
 	fmt.Printf("Body received: %v\n", response)
 	return response, nil
+}
+
+func writeToSocket(header []byte, body string) error {
+	if _, err := (*socketConn).Write(header); err != nil {
+		return err
+	}
+	if _, err := (*socketConn).Write([]byte(body)); err != nil {
+		return err
+	}
+	return nil
 }
